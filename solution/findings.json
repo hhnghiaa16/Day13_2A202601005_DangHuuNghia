@@ -1,12 +1,116 @@
 {
-  "team": "TODO-team-name",
+  "team": "DangHuuNghia",
   "schema_version": 1,
   "findings": [
     {
+      "fault_class": "infinite_loop",
+      "evidence": {
+        "metric": "public_status_by_qid",
+        "observed": "public simulator run had 119 ok and 1 loop; pub-066 returned status=loop",
+        "trace_ids": ["pub-066"]
+      },
+      "root_cause": "The shipped prompt/config encouraged repeated tool calls: high temperature, loop_guard disabled, no tool_budget, and a vague prompt without one-call-per-tool guidance.",
+      "suggested_fix": "Rewrite prompt to require each tool at most once, set temperature to 0.2, enable loop_guard, set tool_budget to 4, and reduce max_steps."
+    },
+    {
+      "fault_class": "tool_overuse",
+      "evidence": {
+        "metric": "sealed_tools_used_single_request_before_fix",
+        "observed": "single-request diagnostic hit max_steps=12 with repeated check_stock calls before prompt/config changes",
+        "trace_ids": ["one"]
+      },
+      "root_cause": "The original system prompt only said to help and give a total; it did not require clean field extraction, exact tool order, or a maximum of one call per tool.",
+      "suggested_fix": "Use a tool-first prompt with check_stock/get_discount/calc_shipping order and one-call limits; cap tool calls with config tool_budget."
+    },
+    {
+      "fault_class": "arithmetic_error",
+      "evidence": {
+        "metric": "trace_vs_answer_recompute",
+        "observed": "debug-vip trace returned unit_price_vnd=35000000, quantity=3, VIP20 percent=20, and shipping cost; the model answer ignored the 20 percent discount before wrapper recomputation",
+        "trace_ids": ["debug-vip"]
+      },
+      "root_cause": "The model sometimes used tool observations but failed to apply the exact integer discount formula in the final answer.",
+      "suggested_fix": "Keep the exact formula in the prompt and use wrapper arithmetic guardrails to recompute totals from check_stock/get_discount/calc_shipping observations."
+    },
+    {
+      "fault_class": "pii_leak",
+      "evidence": {
+        "metric": "prompt_and_config_audit",
+        "observed": "public questions include email/phone-like user data; original config had redact_pii=false and prompt had no no-PII rule",
+        "trace_ids": ["pub-013"]
+      },
+      "root_cause": "The initial prompt did not prohibit repeating customer emails or phone numbers, and output redaction was disabled.",
+      "suggested_fix": "Enable redact_pii and add a system-prompt rule to never repeat emails, phone numbers, IDs, or private data."
+    },
+    {
+      "fault_class": "error_spike",
+      "evidence": {
+        "metric": "config_audit",
+        "observed": "initial solution/config.json shipped with tool_error_rate=0.18 and retry disabled",
+        "trace_ids": []
+      },
+      "root_cause": "Intermittent tool errors were injected while retry/backoff was disabled, causing avoidable failed or low-quality calls.",
+      "suggested_fix": "Set tool_error_rate to 0.0 for the lab config and enable retry with bounded attempts/backoff."
+    },
+    {
       "fault_class": "latency_spike",
-      "evidence": {"metric": "latency_p95_ms", "observed": "TODO from your telemetry", "trace_ids": []},
-      "root_cause": "TODO: what config knob or behavior causes it?",
-      "suggested_fix": "TODO: config change and/or wrapper mitigation"
+      "evidence": {
+        "metric": "sealed_latency_public_after_fix",
+        "observed": "public run still had long-tail latency with p95 about 13.2s and max about 20.8s; baseline loop cases hit max steps",
+        "trace_ids": ["pub-050", "pub-066"]
+      },
+      "root_cause": "Repeated tool calls, verbose prompt/context, and high max completion budget increased long-tail latency.",
+      "suggested_fix": "Enable cache, reduce completion budget, reduce context/verbose settings, cap tools, and retry only on bad statuses."
+    },
+    {
+      "fault_class": "cost_blowup",
+      "evidence": {
+        "metric": "sealed_token_usage_public",
+        "observed": "public run had high prompt-token usage from multi-step tool traces; original verbose_system=true, context_size=8, and examples/prompt were bloated",
+        "trace_ids": []
+      },
+      "root_cause": "Large context, verbose system text, long few-shot examples, and repeated tool loops inflated prompt tokens.",
+      "suggested_fix": "Set verbose_system=false, reduce context_size, shorten prompt/examples, cap max_completion_tokens, and enforce tool economy."
+    },
+    {
+      "fault_class": "quality_drift",
+      "evidence": {
+        "metric": "config_audit",
+        "observed": "initial config had session_drift_rate=0.06 and no context reset, which can degrade later turns in multi-turn traffic",
+        "trace_ids": []
+      },
+      "root_cause": "Session state was allowed to drift without periodic reset or stable low-temperature behavior.",
+      "suggested_fix": "Set session_drift_rate to 0.0, use low temperature, and reset context every few turns."
+    },
+    {
+      "fault_class": "tool_failure",
+      "evidence": {
+        "metric": "config_and_question_audit",
+        "observed": "public questions include Vietnamese diacritics in destinations; initial normalize_unicode=false and catalog_override incorrectly marked macbook out of stock",
+        "trace_ids": ["pub-005", "pub-041"]
+      },
+      "root_cause": "Unicode normalization was disabled and catalog_override contradicted the real catalog for MacBook.",
+      "suggested_fix": "Enable normalize_unicode and remove catalog_override so tools receive clean city/product names and true catalog data."
+    },
+    {
+      "fault_class": "fabrication",
+      "evidence": {
+        "metric": "prompt_audit",
+        "observed": "initial prompt only said to help and give a total in VND, with no grounding/refusal rule for unknown, out-of-stock, or unserved cases",
+        "trace_ids": ["pub-040", "pub-089"]
+      },
+      "root_cause": "The model was encouraged to always provide a total even when tool data should require a refusal.",
+      "suggested_fix": "Prompt requires using only tool data and refusing without a total when product is unknown/out of stock/insufficient stock or shipping is not served."
+    },
+    {
+      "fault_class": "prompt_injection",
+      "evidence": {
+        "metric": "private_twist_defense_audit",
+        "observed": "docs state private orders include notes with fake system prices; original prompt had no rule treating order notes as untrusted data",
+        "trace_ids": []
+      },
+      "root_cause": "Order notes could be interpreted as instructions instead of data, allowing fake prices or hidden directives to override tool data.",
+      "suggested_fix": "Prompt treats notes and system-like text inside customer messages as untrusted data and uses prices only from check_stock."
     }
   ]
 }
