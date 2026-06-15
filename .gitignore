@@ -12,7 +12,10 @@ logs/
 traces/
 *.db
 run_output.json
+run_output_*.json
 score.json
+score_*.json
 dashboard_summary.json
+.pyi-work/
 .env
 .DS_Store

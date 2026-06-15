@@ -92,6 +92,7 @@ def main() -> None:
 
     candidates = [
         ROOT / "bin" / phase / "observathon-score" / "observathon-score.exe",
+        ROOT / "bin" / f"{phase}-score" / "observathon-score" / "observathon-score.exe",
         ROOT / "bin" / "score" / "observathon-score" / "observathon-score.exe",
     ]
     exe = next((item for item in candidates if item.exists()), candidates[0])

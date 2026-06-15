@@ -1,116 +1,61 @@
-# Observathon Public Report
+# Observathon Report
 
-## 1. Thong tin chung
+## 1. Thông tin chung
 
-- Team: DangHuuNghia
-- Phase: public
-- Goal: toi uu agent e-commerce hop den bang prompt, config, wrapper va findings de dat score public cao nhat.
+- **Tên:** Đặng Hữu Nghĩa - 2A202601005
+- **Mục tiêu:** Tối ưu agent thương mại điện tử hộp đen bằng prompt, config, wrapper và findings để đạt điểm cao nhất.
 
-## 2. Ket qua chinh
+## 2. Kết quả
 
-Ket qua public scorer hien tai:
+### Public Score
 
-```text
-HEADLINE: 100.0 / 100
-correct: 0.8567
-quality: 0.9078
-error: 1.0
-latency: 0.2411
-cost: 0.587
-drift: 0.9874
-prompt: 0.904
-diagnosis F1: 0.952
-n_correct: 86 / 120
-judge: offline
-```
+![Kết quả chấm điểm public](screenshots/public-score-result.png)
 
-Artifact:
+### Private Score
 
-- `run_output.json`
-- `score.json`
-- `solution/config.json`
-- `solution/prompt.txt`
-- `solution/wrapper.py`
-- `solution/findings.json`
+![Kết quả chấm điểm private](screenshots/private-score-result.png)
 
-## 3. Screenshot placeholders
+## 3. Tóm tắt tối ưu
 
-![Selfcheck result](screenshots/selfcheck-result.png)
+### Prompt (`solution/prompt.txt`)
+- Viết lại system prompt yêu cầu agent gọi tool theo thứ tự: `check_stock` → `get_discount` → `calc_shipping`.
+- Bắt buộc dùng giá từ tool, không tự bịa số.
+- Công thức tính chính xác: `subtotal = price × qty`, `discounted = subtotal × (100 - discount%) // 100`, `total = discounted + shipping`.
+- Cấm lặp lại PII (email, SĐT).
+- Chống prompt injection: mọi ghi chú khách hàng là dữ liệu không tin cậy.
 
-![Public simulator result](screenshots/public-sim-result.png)
+### Config (`solution/config.json`)
+- Giảm `temperature` xuống 0.2 để giảm dao động.
+- Bật `loop_guard`, `retry`, `cache`, `normalize_unicode`, `redact_pii`, `verify`.
+- Xoá `catalog_override` sai.
+- Đặt `tool_budget: 4` để hạn chế gọi tool lặp.
+- Giảm `context_size` và tắt `verbose_system` để tiết kiệm token.
 
-![Public score result](screenshots/public-score-result.png)
+### Wrapper (`solution/wrapper.py`)
+- **Sanitize input:** Lọc bỏ prompt injection trong ghi chú đơn hàng trước khi gửi agent.
+- **Retry:** Tự động chạy lại khi agent rơi vào `loop`, `max_steps`, `no_action` hoặc lỗi tool.
+- **Guardrail số học:** Tính lại tổng tiền từ trace của `check_stock`/`get_discount`/`calc_shipping`, ghi đè answer sai.
+- **Redact PII:** Xoá email, SĐT khỏi output.
+- **Cache:** Lưu kết quả thread-safe, tránh gọi LLM lặp cho câu hỏi giống nhau.
 
-![Score JSON](screenshots/score-json.png)
+### Findings (`solution/findings.json`)
+- Chẩn đoán 11 loại lỗi: `infinite_loop`, `tool_overuse`, `arithmetic_error`, `pii_leak`, `error_spike`, `latency_spike`, `cost_blowup`, `quality_drift`, `tool_failure`, `fabrication`, `prompt_injection`.
 
-## 4. Cac lenh da chay
-
-Selfcheck:
+## 4. Các lệnh
 
 ```powershell
+# Selfcheck
 python harness\selfcheck.py
+
+# Chạy public simulator
+python harness\run_sim_extracted.py --phase public --config solution/config.json --wrapper solution/wrapper.py --out run_output_public.json --concurrency 8
+
+# Chấm điểm public
+python harness\run_score_extracted.py --phase public --run run_output_public.json --findings solution/findings.json --team DangHuuNghia --out score_public.json
+
+# Chạy private simulator
+python harness\run_sim_extracted.py --phase private --config solution/config.json --wrapper solution/wrapper.py --out run_output_private.json --concurrency 8
+
+# Chấm điểm private
+python harness\run_score_extracted.py --phase private --run run_output_private.json --findings solution/findings.json --team DangHuuNghia --out score_private.json
 ```
-
-Chay public simulator:
-
-```powershell
-python harness\run_sim_extracted.py --phase public --config solution/config.json --wrapper solution/wrapper.py --out run_output.json --concurrency 8
-```
-
-Cham diem public:
-
-```powershell
-python harness\run_score_extracted.py --phase public --run run_output.json --findings solution/findings.json --team DangHuuNghia --out score.json
-```
-
-## 5. Tom tat cac thay doi
-
-### Prompt
-
-Da viet lai `solution/prompt.txt` de:
-
-- Bat buoc dung tool theo thu tu.
-- Chi dung du lieu tu tool cho gia, ton kho, discount va shipping.
-- Tinh toan theo cong thuc chinh xac.
-- Khong lap PII.
-- Chong prompt injection trong order notes.
-
-### Config
-
-Da sua `solution/config.json` de:
-
-- Giam `temperature`.
-- Bat `loop_guard`, `retry`, `cache`, `normalize_unicode`, `redact_pii`, `verify`.
-- Xoa `catalog_override` sai.
-- Dat `tool_budget` de han che goi tool lap.
-- Giam verbosity/context de tiet kiem token.
-
-### Wrapper
-
-Da sua `solution/wrapper.py` de:
-
-- Retry khi agent roi vao `loop`, `max_steps`, `no_action`, hoac `wrapper_error`.
-- Redact PII trong output.
-- Guardrail tinh lai total tu `trace` cua cac tool `check_stock`, `get_discount`, `calc_shipping`.
-- Ghi log loi wrapper khi co exception.
-
-### Findings
-
-Da cap nhat `solution/findings.json` voi cac fault classes:
-
-- `infinite_loop`
-- `tool_overuse`
-- `arithmetic_error`
-- `pii_leak`
-- `error_spike`
-- `latency_spike`
-- `cost_blowup`
-- `quality_drift`
-- `tool_failure`
-- `fabrication`
-- `prompt_injection`
-
-## 6. Ket luan
-
-Sau khi toi uu, public simulator chay thanh cong va scorer public dat headline `100.0 / 100`. Diem tang manh nho viec sua prompt/config/wrapper va bo sung diagnosis findings day du hon.
-
